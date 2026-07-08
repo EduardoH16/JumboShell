@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "jumbo-shell"
+version = "0.1.0"
+description = "A smart terminal companion for Tufts CS students"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.80.0",
+    "paramiko>=3.4.0",
+    "keyring>=25.0.0",
+    "rich>=13.7.0",
+]
+
+[project.scripts]
+jumbo-shell = "jumbo_shell.__main__:main"
