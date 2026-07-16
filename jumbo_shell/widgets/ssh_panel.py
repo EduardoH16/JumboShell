@@ -37,19 +37,27 @@ class SSHPanel(Widget):
     def _handle_connect(self) -> None:
         utln = self.query_one("#utln", Input).value
         password = self.query_one("#password", Input).value
+        status = self.query_one("#status", Label)
+
         if not utln or not password:
-            self.query_one(
-                "#status", Label).renderable = "[red]Invalid credentials[/red]"
+            status.update("[red]Please enter your UTLN and password[/red]")
             return
-        save_credentials(utln, password)
-        self.client.connect()
+
+        status.update("[yellow]Connecting...[/yellow]")
+        self.refresh()
+
+        try:
+            save_credentials(utln, password)
+            self.client.connect()
+        except Exception as e:
+            status.update(f"[red]Error: {e}[/red]")
+            return
+
         if self.client.is_connected:
-            self.query_one(
-                "#status", Label).renderable = "[green]Connected[/green]"
+            status.update("[green]Connected[/green]")
             self.app.refresh()
         else:
-            self.query_one(
-                "#status", Label).renderable = "[red]Connection failed[/red]"
+            status.update("[red]Connection failed[/red]")
 
     def _handle_logout(self) -> None:
         delete_credentials()

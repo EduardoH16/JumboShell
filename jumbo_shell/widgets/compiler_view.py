@@ -36,7 +36,7 @@ class CompilerView(Widget):
 
     def compose(self) -> ComposeResult:
         if not self.diagnostics:
-            yield Label("No compiler errors or warnings")
+            yield Label("No compiler errors or warnings.")
             return
 
         errors = [d for d in self.diagnostics if d.severity == "error"]

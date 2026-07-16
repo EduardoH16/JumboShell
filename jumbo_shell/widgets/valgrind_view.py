@@ -27,6 +27,10 @@ class ValgrindIssuePanel(Widget):
         self.valgrind_output = valgrind_output
 
     def compose(self) -> ComposeResult:
+        if not self.valgrind_output:
+            yield Label("No valgrind output yet.")
+            return
+
         if self.valgrind_output.num_errors == 0:
             yield Label("No memory errors detected.")
             return

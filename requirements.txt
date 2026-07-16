@@ -3,3 +3,4 @@ paramiko>=3.4.0
 keyring>=25.0.0
 rich>=13.7.0
 tomli-w>=1.0.0
+keyrings.alt>=5.0.0

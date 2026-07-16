@@ -9,6 +9,7 @@ class SSHClient:
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self._connected = False
+        self._cwd = "~"
 
     def connect(self) -> bool:
         """Connect using saved credentials. Returns True on success."""
@@ -26,13 +27,25 @@ class SSHClient:
         return True
 
     def run(self, command: str) -> tuple[str, str]:
-        """Run a command. Returns (stdout, stderr) as strings."""
         if not self._connected:
             return ("", "")
-        _, stdout, stderr = self._client.exec_command(command)
-        output = stdout.read().decode()
-        errors = stderr.read().decode()
-        return (output, errors)
+        if command.strip().startswith("cd"):
+            # update tracked directory and confirm it exists
+            new_dir = command.strip()[3:].strip() or "~"
+            _, stdout, stderr = self._client.exec_command(
+                f"cd {self._cwd} && cd {new_dir} && pwd"
+            )
+            result = stdout.read().decode().strip()
+            err = stderr.read().decode().strip()
+            if result:
+                self._cwd = result
+                return (f"Changed directory to {self._cwd}", "")
+
+            return ("", f"cd: {err}")
+
+        full_command = f"cd {self._cwd} && {command}"
+        _, stdout, stderr = self._client.exec_command(full_command)
+        return (stdout.read().decode(), stderr.read().decode())
 
     def disconnect(self) -> None:
         """Close the connection."""
