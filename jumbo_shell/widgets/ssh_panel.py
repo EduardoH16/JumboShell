@@ -1,8 +1,7 @@
 from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Label, Input, Button
-from textual.containers import Vertical
-from ..ssh.credentials import save_credentials, load_credentials, delete_credentials
+from ..ssh.credentials import save_credentials
 from ..ssh.client import SSHClient
 
 
@@ -14,25 +13,19 @@ class SSHPanel(Widget):
         self.client = client
 
     def compose(self) -> ComposeResult:
-        yield Label("[bold]JumboShell - Tufts CS Server[/bold]")
+        yield Label("[bold]JumboShell — Tufts CS Server[/bold]")
         yield Label("homework.cs.tufts.edu")
-
-        if self.client.is_connected:
-            yield Label("[green]Connected[/green]")
-            yield Button("Logout", id="logout")
-
-        else:
-            yield Input(placeholder="UTLN (e.g. jsmith01)", id="utln")
-            yield Input(placeholder="Password", password=True, id="password")
-            yield Button("Connect", id="connect")
-            yield Label("", id="status")
+        yield Input(placeholder="UTLN (e.g. jsmith01)", id="utln")
+        yield Input(placeholder="Password", password=True, id="password")
+        yield Button("Connect", id="connect", variant="primary")
+        yield Label("", id="status")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle connect and logout button presses."""
         if event.button.id == "connect":
             self._handle_connect()
-        elif event.button.id == "logout":
-            self._handle_logout()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._handle_connect()
 
     def _handle_connect(self) -> None:
         utln = self.query_one("#utln", Input).value
@@ -54,12 +47,7 @@ class SSHPanel(Widget):
             return
 
         if self.client.is_connected:
-            status.update("[green]Connected[/green]")
-            self.app.refresh()
+            self.app.pop_screen()
+            self.app.notify("Connected to Tufts server!")
         else:
-            status.update("[red]Connection failed[/red]")
-
-    def _handle_logout(self) -> None:
-        delete_credentials()
-        self.client.disconnect()
-        self.app.refresh()
+            status.update("[red]Connection failed. Check credentials or VPN.[/red]")
