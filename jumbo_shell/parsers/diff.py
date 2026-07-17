@@ -22,12 +22,23 @@ class DiffResult:
 
 def parse_diff_output(raw: str) -> DiffResult | None:
     """Parse unified diff output into a structured DiffResult."""
-    if not raw or raw[0:3] != "---":
+    if not raw:
         return None
 
-    lines = raw.splitlines()
-    old_file = lines[0].split()[1]
-    new_file = lines[1].split()[1]
+    # Find the start of the actual diff output — skip any shell echo/prompt lines
+    all_lines = raw.splitlines()
+    start_idx = None
+    for i, line in enumerate(all_lines):
+        if line.startswith("---"):
+            start_idx = i
+            break
+
+    if start_idx is None or start_idx + 1 >= len(all_lines):
+        return None
+
+    lines = all_lines[start_idx:]
+    old_file = lines[0].split()[1] if len(lines[0].split()) > 1 else "file_a"
+    new_file = lines[1].split()[1] if len(lines[1].split()) > 1 else "file_b"
 
     result = DiffResult(file_old=old_file,
                         file_new=new_file,

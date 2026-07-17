@@ -9,46 +9,70 @@ class SSHClient:
     """Manages a persistent interactive SSH shell session."""
 
     def __init__(self):
-        self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self._connected = False
         self._shell = None
         self._cwd = "~"
+        self._paramiko = None
 
-    def connect(self) -> bool:
-        """Connect using saved credentials and open an interactive shell."""
-        credentials = load_credentials()
-        if not credentials:
+    def _fresh_client(self) -> paramiko.SSHClient:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        return client
+
+    def connect(self, utln: str = None, password: str = None) -> bool:
+        if utln and password:
+            creds = (utln, password)
+        else:
+            creds = load_credentials()
+
+        if not creds:
             return False
-        utln, password = credentials
+
+        utln, password = creds
+        self._paramiko = self._fresh_client()
+
         try:
-            self._client.connect(TUFTS_HOST, username=utln, password=password)
+            self._paramiko.connect(
+                TUFTS_HOST,
+                username=utln,
+                password=password,
+                timeout=3,
+                banner_timeout=3,
+                auth_timeout=3,
+                look_for_keys=False,
+                allow_agent=False,
+            )
         except paramiko.AuthenticationException:
             return False
         except Exception:
             return False
 
-        # Open a real interactive PTY shell — supports stdin, interactive programs
-        self._shell = self._client.invoke_shell(width=220, height=50)
+        self._shell = self._paramiko.invoke_shell(width=220, height=50)
         self._connected = True
-        time.sleep(0.8)
-        # Drain the initial banner/MOTD so it doesn't pollute output
+
+        # Wait for shell ready, max 2s
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            if self._shell.recv_ready():
+                time.sleep(0.05)
+                break
+            time.sleep(0.05)
+
+        # Drain banner/MOTD
         while self._shell.recv_ready():
             self._shell.recv(65535)
+
         return True
 
     def send(self, text: str) -> None:
-        """Send a line to the shell — works as a command OR as program stdin."""
         if self._shell:
             self._shell.send(text + "\n")
 
     def send_ctrl_c(self) -> None:
-        """Interrupt the currently running program."""
         if self._shell:
             self._shell.send("\x03")
 
     def read_available(self) -> str:
-        """Non-blocking read of whatever output is currently available."""
         output = ""
         if self._shell:
             while self._shell.recv_ready():
@@ -59,7 +83,9 @@ class SSHClient:
         if self._shell:
             self._shell.close()
             self._shell = None
-        self._client.close()
+        if self._paramiko:
+            self._paramiko.close()
+            self._paramiko = None
         self._connected = False
 
     @property

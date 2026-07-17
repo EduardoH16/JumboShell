@@ -1,12 +1,11 @@
 from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Label, Input, Button
-from ..ssh.credentials import save_credentials
 from ..ssh.client import SSHClient
 
 
 class SSHPanel(Widget):
-    """Login panel for connecting to the Tufts CS server."""
+    """Login panel — collects credentials and delegates connection to the App."""
 
     def __init__(self, client: SSHClient):
         super().__init__()
@@ -25,29 +24,33 @@ class SSHPanel(Widget):
             self._handle_connect()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()  # prevent bubbling to App's on_input_submitted
         self._handle_connect()
 
     def _handle_connect(self) -> None:
-        utln = self.query_one("#utln", Input).value
+        # Guard against double-submit while a connection attempt is in progress
+        btn = self.query_one("#connect", Button)
+        if btn.disabled:
+            return
+
+        utln = self.query_one("#utln", Input).value.strip()
         password = self.query_one("#password", Input).value
         status = self.query_one("#status", Label)
 
-        if not utln or not password:
-            status.update("[red]Please enter your UTLN and password[/red]")
+        if not utln:
+            status.update("[red]Please enter your UTLN[/red]")
+            return
+        if not password:
+            status.update("[red]Please enter your password[/red]")
             return
 
         status.update("[yellow]Connecting...[/yellow]")
-        self.refresh()
+        btn.disabled = True
 
-        try:
-            save_credentials(utln, password)
-            self.client.connect()
-        except Exception as e:
-            status.update(f"[red]Error: {e}[/red]")
-            return
+        # Delegate to the App which runs the actual connection in a worker thread
+        self.app.attempt_login(utln, password)
 
-        if self.client.is_connected:
-            self.app.pop_screen()
-            self.app.notify("Connected to Tufts server!")
-        else:
-            status.update("[red]Connection failed. Check credentials or VPN.[/red]")
+    def show_error(self, message: str) -> None:
+        """Called by the App when login fails."""
+        self.query_one("#connect", Button).disabled = False
+        self.query_one("#status", Label).update(f"[red]{message}[/red]")
