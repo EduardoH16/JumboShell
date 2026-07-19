@@ -5,3 +5,4 @@ __pycache__/
 dist/
 .DS_Store
 debug-*.log
+debug-3fd209.log
