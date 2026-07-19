@@ -40,9 +40,7 @@ def parse_diff_output(raw: str) -> DiffResult | None:
     old_file = lines[0].split()[1] if len(lines[0].split()) > 1 else "file_a"
     new_file = lines[1].split()[1] if len(lines[1].split()) > 1 else "file_b"
 
-    result = DiffResult(file_old=old_file,
-                        file_new=new_file,
-                        hunks=[])
+    result = DiffResult(file_old=old_file, file_new=new_file, hunks=[])
 
     current_hunk = None
     for line in lines[2:]:
@@ -50,13 +48,10 @@ def parse_diff_output(raw: str) -> DiffResult | None:
             current_hunk = DiffHunk(header=line)
             result.hunks.append(current_hunk)
         elif line.startswith("+") and current_hunk:
-            current_hunk.lines.append(
-                DiffLine(content=line[1:], kind="added"))
+            current_hunk.lines.append(DiffLine(content=line[1:], kind="added"))
         elif line.startswith("-") and current_hunk:
-            current_hunk.lines.append(
-                DiffLine(content=line[1:], kind="removed"))
+            current_hunk.lines.append(DiffLine(content=line[1:], kind="removed"))
         elif current_hunk:
-            current_hunk.lines.append(
-                DiffLine(content=line[1:], kind="context"))
+            current_hunk.lines.append(DiffLine(content=line[1:], kind="context"))
 
     return result

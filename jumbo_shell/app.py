@@ -6,15 +6,12 @@ from textual.widgets import Label, TabbedContent, TabPane, Input, Button, RichLo
 from textual.containers import Vertical, Horizontal
 from textual import work
 from textual import events
-from .config import load_config
+from .config import load_config, save_config
 from .themes import THEMES, DEFAULT_THEME
 from .ssh.client import SSHClient, SENTINEL
 from .widgets.ssh_panel import SSHPanel
-from .widgets.compiler_view import CompilerView
 from .widgets.diff_view import DiffView
 from .widgets.test_view import TestView
-from .widgets.valgrind_view import ValgrindIssuePanel
-from .parsers.compiler import parse_compiler_output
 from .parsers.diff import parse_diff_output
 from .parsers.unit_test import parse_unit_test_output
 from .parsers.valgrind import parse_valgrind_output
@@ -51,14 +48,41 @@ class LogoutModal(ModalScreen):
             self.app.exit()
 
 
+class ThemeModal(ModalScreen):
+    """Theme picker — lets the user switch between available themes."""
+
+    THEME_LABELS = {
+        "dark":          "Dark",
+        "light":         "Light",
+        "grey":          "Grey",
+        "high_contrast": "High Contrast",
+    }
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="theme-box"):
+            yield Label("[bold]Choose a Theme[/bold]", id="theme-title")
+            for key, label in self.THEME_LABELS.items():
+                yield Button(label, id=f"theme-{key}")
+            yield Button("Cancel", id="theme-cancel", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "theme-cancel":
+            self.dismiss()
+            return
+        if event.button.id.startswith("theme-"):
+            name = event.button.id[len("theme-"):]
+            self.dismiss(name)
+
+
 class JumboShellApp(App):
     """The root JumboShell application."""
 
     CSS = """
+    /* ── Structure (layout only, no theme colours) ────────────────── */
     #header {
         height: 1;
         dock: top;
-        background: $surface;
+        background: transparent;
     }
     #header Label {
         width: 1fr;
@@ -71,19 +95,48 @@ class JumboShellApp(App):
         border: none;
         margin: 0;
     }
+    #btn-theme       { background: #1a7fd4; color: #ffffff; }
+    #btn-theme:hover { background: #1568b3; color: #ffffff; }
+
     TabbedContent { height: 1fr; }
-    Tab { padding: 0 3; }
+    Tab           { padding: 0 3; }
+
     RichLog {
         height: 1fr;
         padding: 0 1;
         scrollbar-size: 1 1;
         scrollbar-size-horizontal: 0;
     }
-    CompilerView, ValgrindIssuePanel {
-        height: auto;
-        padding: 1 2;
-        width: 1fr;
-    }
+
+    /* ── Theme colours via CSS class on Screen ────────────────────── */
+    /* dark (default) */
+    Screen.theme-dark               { background: #1e1e1e; color: #f8f8f2; }
+    Screen.theme-dark RichLog       { background: #1e1e1e; color: #f8f8f2; }
+    Screen.theme-dark Input#command { background: #2d2d2d; color: #f8f8f2; }
+    Screen.theme-dark TabPane       { background: #1e1e1e; color: #f8f8f2; }
+    Screen.theme-dark Tab           { color: #f8f8f2; }
+
+    /* light */
+    Screen.theme-light               { background: #e8e4dc; color: #2a2a2a; }
+    Screen.theme-light RichLog       { background: #e8e4dc; color: #2a2a2a; }
+    Screen.theme-light Input#command { background: #d8d4cc; color: #2a2a2a; }
+    Screen.theme-light TabPane       { background: #e8e4dc; color: #2a2a2a; }
+    Screen.theme-light Tab           { color: #2a2a2a; }
+
+    /* grey */
+    Screen.theme-grey               { background: #3a3a3a; color: #e0e0e0; }
+    Screen.theme-grey RichLog       { background: #3a3a3a; color: #e0e0e0; }
+    Screen.theme-grey Input#command { background: #4a4a4a; color: #e0e0e0; }
+    Screen.theme-grey TabPane       { background: #3a3a3a; color: #e0e0e0; }
+    Screen.theme-grey Tab           { color: #e0e0e0; }
+
+    /* high contrast */
+    Screen.theme-high-contrast               { background: #000000; color: #ffffff; }
+    Screen.theme-high-contrast RichLog       { background: #000000; color: #ffffff; }
+    Screen.theme-high-contrast Input#command { background: #1a1a1a; color: #ffffff; }
+    Screen.theme-high-contrast TabPane       { background: #000000; color: #ffffff; }
+    Screen.theme-high-contrast Tab           { color: #ffffff; }
+    
     TestView {
         height: 1fr;
         padding: 1 2;
@@ -99,8 +152,15 @@ class JumboShellApp(App):
         scrollbar-size-horizontal: 0;
     }
     TestResultRow { height: 1; padding: 0; }
-    DiffView { height: 1fr; width: 1fr; padding: 1 2; }
-    DiffPanel {
+    DiffView {
+        height: 1fr;
+        width: 1fr;
+    }
+    DiffView Horizontal {
+        height: 1fr;
+        width: 1fr;
+    }
+    DiffColumn {
         width: 1fr;
         height: 1fr;
         border: solid grey;
@@ -109,11 +169,24 @@ class JumboShellApp(App):
         scrollbar-size: 1 1;
         scrollbar-size-horizontal: 0;
     }
+    DiffColumn Label {
+        width: 100%;
+    }
     Input#command { dock: bottom; }
-    LoginModal, LogoutModal {
+    LoginModal, LogoutModal, ThemeModal {
         align: center middle;
         background: $background 80%;
     }
+    #theme-box {
+        width: 40;
+        height: auto;
+        padding: 2 4;
+        border: solid $accent;
+        background: $surface;
+        align: center middle;
+    }
+    #theme-title { text-align: center; width: 100%; margin-bottom: 1; }
+    #theme-box Button { width: 100%; margin-bottom: 1; }
     SSHPanel {
         width: 60;
         height: auto;
@@ -150,19 +223,16 @@ class JumboShellApp(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="header"):
             yield Label("[bold]Welcome to JumboShell! 🐘[/bold]")
+            yield Button("Theme",  id="btn-theme",  variant="default")
             yield Button("Logout", id="btn-logout", variant="warning")
             yield Button("Exit",   id="btn-exit",   variant="error")
         with TabbedContent(id="tabs"):
             with TabPane("Terminal", id="terminal"):
                 yield RichLog(id="terminal-log", highlight=False, markup=False, wrap=True)
-            with TabPane("Compiler", id="compiler"):
-                yield CompilerView([])
             with TabPane("Diff", id="diff"):
                 yield Label("Run: diff file1 file2", id="diff-placeholder")
             with TabPane("Unit Tests", id="tests"):
                 yield TestView(None)
-            with TabPane("Valgrind", id="valgrind"):
-                yield ValgrindIssuePanel(None)
         yield Input(
             placeholder="Enter command or program input...",
             id="command"
@@ -231,16 +301,30 @@ class JumboShellApp(App):
 
     def _append_output(self, text: str) -> None:
         log = self.query_one("#terminal-log", RichLog)
+        complete_now = False
+
         if SENTINEL in text:
-            display = text.replace(SENTINEL, "").strip()
-            if display:
-                log.write(display)
-            self._on_command_done()
+            before = text[:text.index(SENTINEL)]
+            if before.strip():
+                log.write(before)
+                if self._accumulating:
+                    self._accumulated.append(before)
+            complete_now = True
         else:
             if text.strip():
                 log.write(text)
             if self._accumulating:
                 self._accumulated.append(text)
+                # Valgrind always ends with ERROR SUMMARY as its final line.
+                # When Ctrl+C interrupts a program, bash cancels the sentinel
+                # echo. Detect ERROR SUMMARY to trigger routing without sentinel.
+                if (self._pending_command and
+                        "valgrind" in self._pending_command and
+                        "ERROR SUMMARY" in text):
+                    complete_now = True
+
+        if complete_now:
+            self._on_command_done()
 
     def _on_command_done(self) -> None:
         if not self._pending_command:
@@ -254,6 +338,8 @@ class JumboShellApp(App):
 
     def _route_output(self, command: str, raw: str) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
+        log = self.query_one("#terminal-log", RichLog)
+
         if "unit_test" in command:
             if "passing tests" in raw or "failing tests" in raw:
                 result = parse_unit_test_output(raw)
@@ -262,12 +348,35 @@ class JumboShellApp(App):
                 tabs.active = "tests"
             else:
                 self.notify("unit_test did not produce results. Are you in the right directory?", severity="warning")
+
         elif "valgrind" in command:
+            # Parse valgrind output and display a summary in the terminal tab
             if "Memcheck" in raw or "ERROR SUMMARY" in raw:
                 result = parse_valgrind_output(raw)
-                tabs.get_pane("valgrind").query_one(ValgrindIssuePanel).remove()
-                tabs.get_pane("valgrind").mount(ValgrindIssuePanel(result))
-                tabs.active = "valgrind"
+                log.write("─" * 40)
+                if result.no_errors and result.bytes_in_use == 0:
+                    log.write("Valgrind: Clean — no memory errors or leaks.")
+                elif result.no_errors:
+                    # No actual errors/leaks but memory was in use at exit
+                    # (common with C++ runtime; not a real leak)
+                    log.write(
+                        f"Valgrind: No leaks detected. "
+                        f"({result.bytes_in_use:,} bytes in use at exit — "
+                        f"typically C++ runtime overhead)"
+                    )
+                else:
+                    if result.num_errors:
+                        log.write(f"Valgrind: {result.num_errors} memory error(s) found.")
+                    if result.bytes_leaked:
+                        log.write(f"Valgrind: {result.bytes_leaked:,} bytes leaked.")
+                    if result.bytes_in_use:
+                        log.write(f"Valgrind: {result.bytes_in_use:,} bytes in use at exit.")
+                    for issue in result.issues:
+                        if issue.kind != "other":
+                            log.write(f"  [{issue.kind}] {issue.contents[:120]}")
+                log.write("─" * 40)
+            tabs.active = "terminal"
+
         elif command.startswith("diff "):
             result = parse_diff_output(raw)
             if result:
@@ -282,11 +391,6 @@ class JumboShellApp(App):
             else:
                 self.notify("No differences found or files are identical.", severity="warning")
                 tabs.active = "terminal"
-        elif command.startswith(("g++", "clang++", "gcc", "make")):
-            result = parse_compiler_output(raw)
-            tabs.get_pane("compiler").query_one(CompilerView).remove()
-            tabs.get_pane("compiler").mount(CompilerView(result))
-            tabs.active = "compiler"
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         # Only handle the command bar — ignore input events bubbling from login forms
@@ -312,14 +416,22 @@ class JumboShellApp(App):
         is_special = (
             "unit_test" in text or
             "valgrind" in text or
-            text.startswith("diff ") or
-            text.startswith(("g++", "clang++", "gcc", "make"))
+            text.startswith("diff ")
         )
         if is_special:
             self._pending_command = text
             self._accumulating = True
             self._accumulated.clear()
-            self.client.send(f"{text} ; echo {SENTINEL}")
+            # Split the sentinel across two adjacent shell strings so the literal
+            # SENTINEL never appears in the echoed command line, preventing false
+            # sentinel detection when the PTY echoes back what we sent.
+            sentinel_cmd = 'echo "___JUMBOSHELL_""DONE___"'
+            # Force unified diff format so the parser can handle the output
+            send_text = text
+            if text.startswith("diff ") and "-u" not in text.split():
+                parts = text.split(None, 1)
+                send_text = f"diff -u {parts[1]}" if len(parts) > 1 else text
+            self.client.send(f"{send_text} ; {sentinel_cmd}")
         else:
             self.client.send(text)
 
@@ -328,9 +440,6 @@ class JumboShellApp(App):
 
         if event.key == "ctrl+c":
             self.client.send_ctrl_c()
-            self._pending_command = None
-            self._accumulating = False
-            self._accumulated.clear()
             return
 
         if not cmd_input.has_focus or not self._history:
@@ -355,6 +464,16 @@ class JumboShellApp(App):
             self.exit()
         elif event.button.id == "btn-logout":
             self._do_logout()
+        elif event.button.id == "btn-theme":
+            self.push_screen(ThemeModal(), self._on_theme_chosen)
+
+    def _on_theme_chosen(self, theme_name: str | None) -> None:
+        if not theme_name:
+            return
+        self.apply_theme(theme_name)
+        config = load_config()
+        config["theme"] = theme_name
+        save_config(config)
 
     def _do_logout(self) -> None:
         from .ssh.credentials import delete_credentials
@@ -364,9 +483,14 @@ class JumboShellApp(App):
         self.push_screen(LogoutModal(self.client))
 
     def apply_theme(self, theme_name: str) -> None:
-        theme = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
-        self.screen.styles.background = theme["background"]
-        self.screen.styles.color = theme["text"]
+        # Remove every theme class then add the new one.
+        # CSS cascade handles all descendant colours — no inline styles needed.
+        for key in THEMES:
+            self.screen.remove_class(f"theme-{key.replace('_', '-')}")
+        self.screen.add_class(f"theme-{theme_name.replace('_', '-')}")
+        # Keep Textual's dark/light rendering mode in sync so markup inside
+        # RichLog and focus rings render correctly.
+        self.dark = (theme_name != "light")
 
 
 if __name__ == "__main__":
