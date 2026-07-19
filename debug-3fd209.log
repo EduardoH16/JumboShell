@@ -1,1 +1,0 @@
-{"sessionId": "3fd209", "timestamp": 1784333304574, "location": "app.py:on_key", "message": "ctrl+c pressed", "data": {"pending_command": null, "accumulating": false, "accumulated_len": 0}, "hypothesisId": "H1", "runId": "post-fix"}
