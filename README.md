@@ -129,5 +129,5 @@ The **Theme** button in the top-right lets you switch between Dark, Light, Grey,
 ## Notes
 
 - All SSH communication goes through `paramiko`. Your password is stored in your OS keychain (macOS Keychain on Mac, GNOME Keyring on Linux, Windows Credential Manager on WSL), not in any file.
-- JumboShell works with `g++`, `clang++`, and `gcc` output — compiler errors just print to the terminal tab like normal.
+- JumboShell works with `g++`, `clang++`, and `gcc` output. Compiler errors just print to the terminal tab like normal.
 - Interactive programs work fine. Use Ctrl+C to interrupt them.
